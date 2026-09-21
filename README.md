@@ -102,6 +102,40 @@ The closed output contract prevents format hallucinations. It does not guarantee
 option is correct. Production actions still need confidence gates, deterministic policy checks and
 an abstain or escalation path.
 
+## Cached-option bi-encoder
+
+The second experiment pre-encodes static question/option descriptions and encodes each live state
+once. Train and evaluate it with:
+
+```powershell
+kev-train-bi `
+  --data-dir data/banking77 `
+  --output-dir artifacts/kev-bi-minilm-5k `
+  --max-train-samples 5000 `
+  --epochs 1 `
+  --batch-size 8 `
+  --negatives 7
+
+kev-eval-bi `
+  --model artifacts/kev-bi-minilm-5k `
+  --data-dir data/banking77 `
+  --calibration-samples 200 `
+  --test-samples 500
+```
+
+Applications should call `encode_options` once and reuse the returned vectors. The CLI demonstrates
+the same closed output contract:
+
+```powershell
+kev-predict-bi `
+  --model artifacts/kev-bi-minilm-5k `
+  --state "I am still waiting for my card" `
+  --question "What is the customer's banking intent?" `
+  --option card_arrival `
+  --option cash_withdrawal `
+  --option exchange_rate
+```
+
 ## Tests
 
 ```powershell
@@ -111,4 +145,5 @@ ruff check .
 
 See [the experiment specification](docs/spec.md) and
 [the architecture notes](docs/architecture.md) for scope and next steps. A real RTX 4060 run and
-its limitations are recorded in [the experiment report](docs/experiment-2026-09-21.md).
+its limitations are recorded in [the cross-encoder report](docs/experiment-2026-09-21.md). The
+[cached-option comparison](docs/biencoder-experiment-2026-09-21.md) records the faster architecture.

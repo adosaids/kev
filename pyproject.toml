@@ -23,6 +23,9 @@ kev-download = "kev.data:download_cli"
 kev-train = "kev.train:main"
 kev-eval = "kev.evaluate:main"
 kev-predict = "kev.predict:main"
+kev-train-bi = "kev.train_biencoder:main"
+kev-eval-bi = "kev.evaluate_biencoder:main"
+kev-predict-bi = "kev.predict_biencoder:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/kev"]
@@ -34,4 +37,3 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-

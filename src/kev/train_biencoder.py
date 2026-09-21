@@ -1,0 +1,154 @@
+from __future__ import annotations
+
+import argparse
+import json
+import time
+from pathlib import Path
+
+import torch
+import torch.nn.functional as functional
+from torch.utils.data import DataLoader
+
+from kev.biencoder import BiEncoderDecisionModel
+from kev.data import load_categories, load_split, train_validation_split
+from kev.model import DEFAULT_BASE_MODEL, DEFAULT_QUESTION, candidate_text
+from kev.train import TrainingDataset, seed_everything
+
+
+def make_collator(decision_model: BiEncoderDecisionModel):
+    def collate(groups):
+        group_size = len(groups[0].options)
+        states: list[str] = []
+        candidates: list[str] = []
+        targets: list[int] = []
+        for group in groups:
+            if len(group.options) != group_size:
+                raise ValueError("all training groups must have the same size")
+            states.append(group.state)
+            candidates.extend(candidate_text(group.question, option) for option in group.options)
+            targets.append(group.target)
+        return (
+            decision_model.tokenize_texts(states),
+            decision_model.tokenize_texts(candidates),
+            torch.tensor(targets),
+            group_size,
+        )
+
+    return collate
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Train the cached-option bi-encoder")
+    parser.add_argument("--data-dir", default="data/banking77")
+    parser.add_argument("--base-model", default=DEFAULT_BASE_MODEL)
+    parser.add_argument("--output-dir", default="artifacts/kev-bi-minilm")
+    parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--negatives", type=int, default=7)
+    parser.add_argument("--projection-dim", type=int, default=256)
+    parser.add_argument("--max-length", type=int, default=96)
+    parser.add_argument("--learning-rate", type=float, default=2e-5)
+    parser.add_argument("--weight-decay", type=float, default=0.01)
+    parser.add_argument("--max-train-samples", type=int)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    seed_everything(args.seed)
+    labels = load_categories(args.data_dir)
+    training_examples, validation_examples = train_validation_split(
+        load_split(args.data_dir, "train"), fraction=0.1, seed=args.seed
+    )
+    if args.max_train_samples:
+        training_examples = training_examples[: args.max_train_samples]
+
+    decision_model = BiEncoderDecisionModel.from_pretrained(
+        args.base_model,
+        projection_dim=args.projection_dim,
+        max_length=args.max_length,
+    )
+    decision_model.model.to(args.device)
+    dataset = TrainingDataset(
+        training_examples,
+        labels,
+        negatives=args.negatives,
+        seed=args.seed,
+    )
+    loader = DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        collate_fn=make_collator(decision_model),
+        pin_memory=args.device.startswith("cuda"),
+    )
+    optimizer = torch.optim.AdamW(
+        decision_model.model.parameters(),
+        lr=args.learning_rate,
+        weight_decay=args.weight_decay,
+    )
+    use_amp = args.device.startswith("cuda")
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+    started = time.perf_counter()
+
+    decision_model.model.train()
+    for epoch in range(args.epochs):
+        running_loss = 0.0
+        running_correct = 0
+        seen = 0
+        for step, (states, candidates, targets, group_size) in enumerate(loader, start=1):
+            states = {key: value.to(args.device) for key, value in states.items()}
+            candidates = {key: value.to(args.device) for key, value in candidates.items()}
+            targets = targets.to(args.device)
+            optimizer.zero_grad(set_to_none=True)
+            with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=use_amp):
+                state_vectors = decision_model.model.encode(states)
+                option_vectors = decision_model.model.encode(candidates).reshape(
+                    len(targets), group_size, -1
+                )
+                logits = decision_model.model.scale() * torch.einsum(
+                    "bd,bkd->bk", state_vectors, option_vectors
+                )
+                loss = functional.cross_entropy(logits, targets)
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+
+            running_loss += float(loss.item()) * len(targets)
+            running_correct += int((logits.argmax(dim=-1) == targets).sum().item())
+            seen += len(targets)
+            if step % 50 == 0 or step == len(loader):
+                print(
+                    json.dumps(
+                        {
+                            "epoch": epoch + 1,
+                            "step": step,
+                            "steps": len(loader),
+                            "loss": running_loss / seen,
+                            "group_accuracy": running_correct / seen,
+                        }
+                    )
+                )
+
+    output_dir = Path(args.output_dir)
+    decision_model.save(output_dir)
+    (output_dir / "training_config.json").write_text(
+        json.dumps(
+            {
+                **vars(args),
+                "question": DEFAULT_QUESTION,
+                "labels": labels,
+                "reserved_validation_samples": len(validation_examples),
+                "training_seconds": time.perf_counter() - started,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    print(f"saved checkpoint to {output_dir}")
+
+
+if __name__ == "__main__":
+    main()
