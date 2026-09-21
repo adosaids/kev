@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import torch
@@ -25,6 +26,19 @@ def masked_mean(hidden: torch.Tensor, attention_mask: torch.Tensor) -> torch.Ten
 
 def l2_normalize(vectors: torch.Tensor) -> torch.Tensor:
     return torch.nn.functional.normalize(vectors, p=2, dim=-1)
+
+
+@dataclass(frozen=True)
+class CachedOptions:
+    question: str
+    options: tuple[str, ...]
+    vectors: torch.Tensor
+
+    def validate(self, question: str, options: Sequence[str]) -> None:
+        if self.question != question:
+            raise ValueError("cached options were encoded for a different question")
+        if self.options != tuple(options):
+            raise ValueError("cached options do not match the ordered option list")
 
 
 class BiEncoderCore(nn.Module):
@@ -95,6 +109,15 @@ class BiEncoderDecisionModel:
         encoded = {key: value.to(self.device) for key, value in encoded.items()}
         return self.model.encode(encoded)
 
+    def _encode_texts(self, texts: Sequence[str], *, batch_size: int) -> torch.Tensor:
+        if not texts:
+            raise ValueError("texts must not be empty")
+        self.model.eval()
+        chunks: list[torch.Tensor] = []
+        for start in range(0, len(texts), batch_size):
+            chunks.append(self.encode_tokenized(self.tokenize_texts(texts[start : start + batch_size])))
+        return torch.cat(chunks, dim=0)
+
     @torch.inference_mode()
     def encode_options(
         self,
@@ -102,23 +125,27 @@ class BiEncoderDecisionModel:
         options: Sequence[str],
         *,
         batch_size: int = 128,
-    ) -> torch.Tensor:
-        self.model.eval()
-        chunks: list[torch.Tensor] = []
-        for start in range(0, len(options), batch_size):
-            texts = [candidate_text(question, option) for option in options[start : start + batch_size]]
-            chunks.append(self.encode_tokenized(self.tokenize_texts(texts)))
-        return torch.cat(chunks, dim=0)
+    ) -> CachedOptions:
+        vectors = self._encode_texts(
+            [candidate_text(question, option) for option in options],
+            batch_size=batch_size,
+        )
+        return CachedOptions(question, tuple(options), vectors)
 
     @torch.inference_mode()
     def encode_states(self, states: Sequence[str], *, batch_size: int = 128) -> torch.Tensor:
-        self.model.eval()
-        chunks: list[torch.Tensor] = []
-        for start in range(0, len(states), batch_size):
-            chunks.append(
-                self.encode_tokenized(self.tokenize_texts(states[start : start + batch_size]))
-            )
-        return torch.cat(chunks, dim=0)
+        return self._encode_texts(states, batch_size=batch_size)
+
+    @torch.inference_mode()
+    def score_states(
+        self,
+        states: Sequence[str],
+        cached_options: CachedOptions,
+        *,
+        batch_size: int = 128,
+    ) -> torch.Tensor:
+        state_vectors = self.encode_states(states, batch_size=batch_size)
+        return self.model.scale() * state_vectors @ cached_options.vectors.to(self.device).T
 
     @torch.inference_mode()
     def decide(
@@ -127,15 +154,13 @@ class BiEncoderDecisionModel:
         question: str,
         options: Sequence[str],
         *,
-        option_vectors: torch.Tensor | None = None,
+        cached_options: CachedOptions | None = None,
         temperature: float = 1.0,
     ) -> ChoiceAnswer:
-        if option_vectors is None:
-            option_vectors = self.encode_options(question, options)
-        if option_vectors.shape[0] != len(options):
-            raise ValueError("option_vectors and options must have the same length")
-        state_vector = self.encode_states([state])
-        logits = self.model.scale() * state_vector @ option_vectors.to(self.device).T
+        if cached_options is None:
+            cached_options = self.encode_options(question, options)
+        cached_options.validate(question, options)
+        logits = self.score_states([state], cached_options)
         return ChoiceAnswer.from_logits(
             options,
             logits[0].detach().cpu().tolist(),
@@ -164,4 +189,3 @@ class BiEncoderDecisionModel:
             ),
             encoding="utf-8",
         )
-

@@ -35,12 +35,12 @@ def main() -> None:
         max_length=args.max_length,
     )
     decision_model.model.to(args.device)
-    option_vectors = decision_model.encode_options(args.question, args.option)
+    cached_options = decision_model.encode_options(args.question, args.option)
     answer = decision_model.decide(
         args.state,
         args.question,
         args.option,
-        option_vectors=option_vectors,
+        cached_options=cached_options,
         temperature=temperature,
     )
     print(
@@ -59,4 +59,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

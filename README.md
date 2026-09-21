@@ -123,7 +123,7 @@ kev-eval-bi `
   --test-samples 500
 ```
 
-Applications should call `encode_options` once and reuse the returned vectors. The CLI demonstrates
+Applications should call `encode_options` once and reuse the returned identity-checked cache. The CLI demonstrates
 the same closed output contract:
 
 ```powershell

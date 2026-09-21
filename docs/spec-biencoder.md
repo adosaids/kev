@@ -5,8 +5,9 @@ state once, and retain useful choice accuracy while materially reducing online l
 
 ## Public seams
 
-1. `BiEncoderDecisionModel.encode_options(question, options)` returns reusable option vectors.
-2. `BiEncoderDecisionModel.decide(state, question, options, option_vectors=...)` returns the same
+1. `BiEncoderDecisionModel.encode_options(question, options)` returns a reusable cache that binds
+   vectors to the exact question and ordered option identities.
+2. `BiEncoderDecisionModel.decide(state, question, options, cached_options=...)` returns the same
    closed `ChoiceAnswer` contract as the cross-encoder.
 3. `kev-train-bi` trains grouped choices on the same reserved Banking77 split.
 4. `kev-eval-bi` evaluates all 77 choices, validation-only temperature scaling, probability

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import torch
 
-from kev.biencoder import BiEncoderDecisionModel
+from kev.biencoder import BiEncoderDecisionModel, CachedOptions
 from kev.calibration import fit_temperature
 from kev.data import ChoiceExample, load_categories, load_split, train_validation_split
 from kev.evaluate import evaluate_logits, validate_sample_counts
@@ -21,14 +21,13 @@ def collect_logits(
     examples: list[ChoiceExample],
     labels: list[str],
     *,
-    option_vectors: torch.Tensor,
+    cached_options: CachedOptions,
 ) -> tuple[torch.Tensor, torch.Tensor, float]:
     rows: list[torch.Tensor] = []
     targets: list[int] = []
     started = time.perf_counter()
     for example in examples:
-        state_vector = decision_model.encode_states([example.text])
-        rows.append((decision_model.model.scale() * state_vector @ option_vectors.T).cpu()[0])
+        rows.append(decision_model.score_states([example.text], cached_options).cpu()[0])
         targets.append(labels.index(example.label))
     elapsed = time.perf_counter() - started
     return torch.stack(rows), torch.tensor(targets), elapsed
@@ -44,6 +43,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
+
+
+def synchronize_if_cuda(device: torch.device) -> None:
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
 
 
 def main() -> None:
@@ -65,31 +69,33 @@ def main() -> None:
     )
     decision_model.model.to(args.device)
 
+    synchronize_if_cuda(decision_model.device)
     option_started = time.perf_counter()
-    option_vectors = decision_model.encode_options(DEFAULT_QUESTION, labels)
+    cached_options = decision_model.encode_options(DEFAULT_QUESTION, labels)
+    synchronize_if_cuda(decision_model.device)
     option_precompute_seconds = time.perf_counter() - option_started
     calibration_logits, calibration_targets, calibration_seconds = collect_logits(
         decision_model,
         validation_examples,
         labels,
-        option_vectors=option_vectors,
+        cached_options=cached_options,
     )
     temperature = fit_temperature(calibration_logits, calibration_targets)
     test_logits, test_targets, test_seconds = collect_logits(
         decision_model,
         test_examples,
         labels,
-        option_vectors=option_vectors,
+        cached_options=cached_options,
     )
 
     permutation = torch.randperm(len(labels), generator=torch.Generator().manual_seed(args.seed))
     permuted_labels = [labels[index] for index in permutation.tolist()]
-    permuted_vectors = decision_model.encode_options(DEFAULT_QUESTION, permuted_labels)
+    permuted_options = decision_model.encode_options(DEFAULT_QUESTION, permuted_labels)
     permuted_logits, _, order_seconds = collect_logits(
         decision_model,
         test_examples,
         permuted_labels,
-        option_vectors=permuted_vectors,
+        cached_options=permuted_options,
     )
     original_predictions = [labels[index] for index in test_logits.argmax(dim=-1).tolist()]
     permuted_predictions = [

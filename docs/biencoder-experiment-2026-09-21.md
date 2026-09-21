@@ -23,12 +23,13 @@ Both models used:
 | Calibrated NLL | 0.8223 | **0.6580** |
 | Calibrated ECE | **0.0425** | 0.0464 |
 | Coverage at no more than 5% empirical error | 53.2% | **56.6%** |
-| Online latency per 77-option decision | 31.58 ms | **13.77 ms** |
+| Online latency per 77-option decision | 31.58 ms | **8.20 ms** |
 | Option-order consistency | 100% | 100% |
 
-The bi-encoder was about **2.29x faster online** in this test. Encoding all 77 static options once
-took 0.73 seconds; an application would keep those vectors in memory and amortize that cost across
-requests. The crossover is roughly 41 decisions with these measured timings.
+The bi-encoder was about **3.85x faster online** in this test. Encoding all 77 static options once
+took 0.48 seconds; an application would keep those vectors in memory and amortize that cost across
+requests. The crossover is roughly 21 decisions with these measured timings. CUDA was synchronized
+around both timings so that the measurements include completed GPU work.
 
 The result supports the architecture for a fixed or slowly changing tool catalog. It does not yet
 test unseen option descriptions, out-of-domain rejection, Chinese input or concurrent serving.
@@ -53,4 +54,3 @@ kev-eval-bi `
   --test-samples 500 `
   --max-length 96
 ```
-
