@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import torch
@@ -16,6 +17,13 @@ DEFAULT_QUESTION = "What is the customer's banking intent?"
 
 def candidate_text(question: str, option: str) -> str:
     return f"Question: {question}\nCandidate answer: {option_description(option)}"
+
+
+@dataclass(frozen=True)
+class CandidatePair:
+    state: str
+    question: str
+    option: str
 
 
 class CrossEncoderDecisionModel:
@@ -43,15 +51,15 @@ class CrossEncoderDecisionModel:
     def device(self) -> torch.device:
         return next(self.model.parameters()).device
 
-    def tokenize_pairs(self, states: Sequence[str], questions: Sequence[str], options: Sequence[str]):
-        if not (len(states) == len(questions) == len(options)):
-            raise ValueError("states, questions and options must have the same length")
+    def tokenize_pairs(self, pairs: Sequence[CandidatePair]):
+        if not pairs:
+            raise ValueError("pairs must not be empty")
         candidates = [
-            candidate_text(question, option)
-            for question, option in zip(questions, options, strict=True)
+            candidate_text(pair.question, pair.option)
+            for pair in pairs
         ]
         return self.tokenizer(
-            list(states),
+            [pair.state for pair in pairs],
             candidates,
             padding=True,
             truncation=True,
@@ -75,9 +83,7 @@ class CrossEncoderDecisionModel:
         for start in range(0, len(options), batch_size):
             option_batch = list(options[start : start + batch_size])
             encoded = self.tokenize_pairs(
-                [state] * len(option_batch),
-                [question] * len(option_batch),
-                option_batch,
+                [CandidatePair(state, question, option) for option in option_batch]
             )
             encoded = {key: value.to(self.device) for key, value in encoded.items()}
             logits = self.model(**encoded).logits.squeeze(-1)
@@ -99,4 +105,3 @@ class CrossEncoderDecisionModel:
     def save(self, output_dir: str | Path) -> None:
         self.model.save_pretrained(output_dir)
         self.tokenizer.save_pretrained(output_dir)
-

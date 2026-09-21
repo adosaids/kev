@@ -5,6 +5,13 @@ from dataclasses import dataclass
 from typing import Sequence
 
 
+def choice_confidence(probabilities: Sequence[float]) -> float:
+    """Return the top-label probability used by inference and selective evaluation."""
+    if not probabilities:
+        raise ValueError("probabilities must not be empty")
+    return max(float(probability) for probability in probabilities)
+
+
 @dataclass(frozen=True)
 class ChoiceAnswer:
     """A closed-set decision whose selected value always comes from ``options``."""
@@ -36,15 +43,8 @@ class ChoiceAnswer:
         probabilities = [value / denominator for value in exponentials]
         winner = max(range(len(options)), key=probabilities.__getitem__)
 
-        if len(options) == 1:
-            confidence = 1.0
-        else:
-            entropy = -sum(p * math.log(max(p, 1e-12)) for p in probabilities)
-            confidence = 1.0 - entropy / math.log(len(options))
-
         return cls(
             choice=options[winner],
             probabilities=dict(zip(options, probabilities, strict=True)),
-            confidence=confidence,
+            confidence=choice_confidence(probabilities),
         )
-

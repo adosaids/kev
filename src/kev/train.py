@@ -18,7 +18,12 @@ from kev.data import (
     load_split,
     train_validation_split,
 )
-from kev.model import DEFAULT_BASE_MODEL, DEFAULT_QUESTION, CrossEncoderDecisionModel
+from kev.model import (
+    DEFAULT_BASE_MODEL,
+    DEFAULT_QUESTION,
+    CandidatePair,
+    CrossEncoderDecisionModel,
+)
 
 
 class TrainingDataset(Dataset):
@@ -57,19 +62,18 @@ def seed_everything(seed: int) -> None:
 
 def make_collator(decision_model: CrossEncoderDecisionModel):
     def collate(groups):
-        states: list[str] = []
-        questions: list[str] = []
-        options: list[str] = []
+        pairs: list[CandidatePair] = []
         targets: list[int] = []
         group_size = len(groups[0].options)
         for group in groups:
             if len(group.options) != group_size:
                 raise ValueError("all training groups must have the same size")
-            states.extend([group.state] * group_size)
-            questions.extend([group.question] * group_size)
-            options.extend(group.options)
+            pairs.extend(
+                CandidatePair(group.state, group.question, option)
+                for option in group.options
+            )
             targets.append(group.target)
-        encoded = decision_model.tokenize_pairs(states, questions, options)
+        encoded = decision_model.tokenize_pairs(pairs)
         return encoded, torch.tensor(targets), group_size
 
     return collate

@@ -53,11 +53,12 @@ test split.
 | Coverage at no more than 5% empirical error | 48.0% | 53.2% |
 
 - Fitted temperature: `0.7241`
-- Option-order consistency: 100% by construction because each candidate is scored independently.
+- Option-order consistency: 100% in a second inference pass with a fixed random permutation of all
+  77 options. Independent candidate scoring makes this expected, but the rerun verifies the public
+  inference path rather than deriving it algebraically from the first pass.
 - End-to-end latency: 31.84 ms per 77-option decision on this machine.
 
 These numbers show that the small model learned useful zero-shot-style candidate scoring and that
 post-hoc calibration materially improved probability quality. They do not establish production
 reliability: the sample is small, the threshold was selected on the reported test slice, and the
 model has no explicit out-of-domain or `none_of_the_above` training yet.
-

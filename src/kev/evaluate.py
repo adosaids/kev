@@ -96,10 +96,22 @@ def main() -> None:
         batch_size=args.batch_size,
     )
 
-    original_predictions = test_logits.argmax(dim=-1)
+    original_predictions = [labels[index] for index in test_logits.argmax(dim=-1).tolist()]
     permutation = torch.randperm(len(labels), generator=torch.Generator().manual_seed(args.seed))
-    permuted_predictions = permutation[test_logits[:, permutation].argmax(dim=-1)]
-    order_consistency = float((original_predictions == permuted_predictions).float().mean().item())
+    permuted_labels = [labels[index] for index in permutation.tolist()]
+    permuted_logits, _, order_consistency_seconds = collect_logits(
+        decision_model,
+        test_examples,
+        permuted_labels,
+        batch_size=args.batch_size,
+    )
+    permuted_predictions = [
+        permuted_labels[index] for index in permuted_logits.argmax(dim=-1).tolist()
+    ]
+    order_consistency = sum(
+        original == permuted
+        for original, permuted in zip(original_predictions, permuted_predictions, strict=True)
+    ) / len(original_predictions)
 
     result = {
         "model": args.model,
@@ -109,6 +121,7 @@ def main() -> None:
         "uncalibrated": evaluate_logits(test_logits, test_targets, 1.0),
         "calibrated": evaluate_logits(test_logits, test_targets, temperature),
         "option_order_consistency": order_consistency,
+        "order_consistency_seconds": order_consistency_seconds,
         "calibration_seconds": calibration_seconds,
         "test_seconds": test_seconds,
         "milliseconds_per_decision": 1000 * test_seconds / max(len(test_examples), 1),

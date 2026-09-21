@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 
+from kev.contracts import choice_confidence
+
 
 def _validate(probabilities: Sequence[Sequence[float]], labels: Sequence[int]) -> None:
     if not probabilities or len(probabilities) != len(labels):
@@ -32,7 +34,7 @@ def classification_metrics(
         raise ValueError("bins must be positive")
 
     predictions = [max(range(len(row)), key=row.__getitem__) for row in probabilities]
-    confidences = [max(row) for row in probabilities]
+    confidences = [choice_confidence(row) for row in probabilities]
     correct = [int(prediction == label) for prediction, label in zip(predictions, labels, strict=True)]
     count = len(labels)
 
@@ -86,7 +88,7 @@ def coverage_at_error(
 
     ranked = sorted(
         (
-            (max(row), int(max(range(len(row)), key=row.__getitem__) != label))
+            (choice_confidence(row), int(max(range(len(row)), key=row.__getitem__) != label))
             for row, label in zip(probabilities, labels, strict=True)
         ),
         reverse=True,
