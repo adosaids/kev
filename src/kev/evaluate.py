@@ -62,8 +62,16 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def validate_sample_counts(calibration_samples: int, test_samples: int) -> None:
+    if calibration_samples < 1:
+        raise ValueError("calibration_samples must be positive")
+    if test_samples < 1:
+        raise ValueError("test_samples must be positive")
+
+
 def main() -> None:
     args = parse_args()
+    validate_sample_counts(args.calibration_samples, args.test_samples)
     rng = random.Random(args.seed)
     labels = load_categories(args.data_dir)
     _, validation_examples = train_validation_split(

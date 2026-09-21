@@ -93,7 +93,7 @@ The output is always shaped like:
     "cash_withdrawal": 0.04,
     "exchange_rate": 0.05
   },
-  "confidence": 0.73,
+  "confidence": 0.91,
   "temperature": 1.4
 }
 ```
