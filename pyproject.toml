@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kev-decision"
+version = "0.1.0"
+description = "A small typed decision model experiment for consumer GPUs"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26",
+  "safetensors>=0.4",
+  "torch>=2.2",
+  "transformers>=4.45,<5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.8"]
+
+[project.scripts]
+kev-download = "kev.data:download_cli"
+kev-train = "kev.train:main"
+kev-eval = "kev.evaluate:main"
+kev-predict = "kev.predict:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kev"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
