@@ -22,10 +22,13 @@ def test_l2_normalize_returns_unit_vectors():
 
 
 def test_cached_options_reject_semantic_mismatch_even_when_length_matches():
-    cached = CachedOptions("pick a tool", ("browser", "shell"), torch.zeros(2, 4))
+    owner = object()
+    cached = CachedOptions(owner, "pick a tool", ("browser", "shell"), torch.zeros(2, 4))
 
-    cached.validate("pick a tool", ["browser", "shell"])
+    cached.validate(owner, "pick a tool", ["browser", "shell"])
     with pytest.raises(ValueError, match="ordered option list"):
-        cached.validate("pick a tool", ["shell", "browser"])
+        cached.validate(owner, "pick a tool", ["shell", "browser"])
     with pytest.raises(ValueError, match="different question"):
-        cached.validate("pick a route", ["browser", "shell"])
+        cached.validate(owner, "pick a route", ["browser", "shell"])
+    with pytest.raises(ValueError, match="different model instance"):
+        cached.validate(object(), "pick a tool", ["browser", "shell"])

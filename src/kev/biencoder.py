@@ -30,11 +30,14 @@ def l2_normalize(vectors: torch.Tensor) -> torch.Tensor:
 
 @dataclass(frozen=True)
 class CachedOptions:
+    owner: object
     question: str
     options: tuple[str, ...]
     vectors: torch.Tensor
 
-    def validate(self, question: str, options: Sequence[str]) -> None:
+    def validate(self, owner: object, question: str, options: Sequence[str]) -> None:
+        if self.owner is not owner:
+            raise ValueError("cached options were encoded by a different model instance")
         if self.question != question:
             raise ValueError("cached options were encoded for a different question")
         if self.options != tuple(options):
@@ -65,6 +68,7 @@ class BiEncoderDecisionModel:
         self.model = model
         self.tokenizer = tokenizer
         self.max_length = max_length
+        self._cache_owner = object()
 
     @classmethod
     def from_pretrained(
@@ -130,7 +134,7 @@ class BiEncoderDecisionModel:
             [candidate_text(question, option) for option in options],
             batch_size=batch_size,
         )
-        return CachedOptions(question, tuple(options), vectors)
+        return CachedOptions(self._cache_owner, question, tuple(options), vectors)
 
     @torch.inference_mode()
     def encode_states(self, states: Sequence[str], *, batch_size: int = 128) -> torch.Tensor:
@@ -144,6 +148,8 @@ class BiEncoderDecisionModel:
         *,
         batch_size: int = 128,
     ) -> torch.Tensor:
+        if cached_options.owner is not self._cache_owner:
+            raise ValueError("cached options were encoded by a different model instance")
         state_vectors = self.encode_states(states, batch_size=batch_size)
         return self.model.scale() * state_vectors @ cached_options.vectors.to(self.device).T
 
@@ -159,7 +165,7 @@ class BiEncoderDecisionModel:
     ) -> ChoiceAnswer:
         if cached_options is None:
             cached_options = self.encode_options(question, options)
-        cached_options.validate(question, options)
+        cached_options.validate(self._cache_owner, question, options)
         logits = self.score_states([state], cached_options)
         return ChoiceAnswer.from_logits(
             options,

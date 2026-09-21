@@ -19,7 +19,6 @@ from kev.model import DEFAULT_QUESTION
 def collect_logits(
     decision_model: BiEncoderDecisionModel,
     examples: list[ChoiceExample],
-    labels: list[str],
     *,
     cached_options: CachedOptions,
 ) -> tuple[torch.Tensor, torch.Tensor, float]:
@@ -28,7 +27,7 @@ def collect_logits(
     started = time.perf_counter()
     for example in examples:
         rows.append(decision_model.score_states([example.text], cached_options).cpu()[0])
-        targets.append(labels.index(example.label))
+        targets.append(cached_options.options.index(example.label))
     elapsed = time.perf_counter() - started
     return torch.stack(rows), torch.tensor(targets), elapsed
 
@@ -77,14 +76,12 @@ def main() -> None:
     calibration_logits, calibration_targets, calibration_seconds = collect_logits(
         decision_model,
         validation_examples,
-        labels,
         cached_options=cached_options,
     )
     temperature = fit_temperature(calibration_logits, calibration_targets)
     test_logits, test_targets, test_seconds = collect_logits(
         decision_model,
         test_examples,
-        labels,
         cached_options=cached_options,
     )
 
@@ -94,7 +91,6 @@ def main() -> None:
     permuted_logits, _, order_seconds = collect_logits(
         decision_model,
         test_examples,
-        permuted_labels,
         cached_options=permuted_options,
     )
     original_predictions = [labels[index] for index in test_logits.argmax(dim=-1).tolist()]
