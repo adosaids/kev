@@ -164,10 +164,27 @@ class BiEncoderDecisionModel:
         temperature: float = 1.0,
         abstain_option: str | None = None,
         abstain_threshold: float | None = None,
+        abstain_temperature: float | None = None,
+        calibrated_options: Sequence[str] | None = None,
+        calibrated_question: str | None = None,
+        calibrated_max_length: int | None = None,
     ) -> ChoiceAnswer:
         if cached_options is None:
             cached_options = self.encode_options(question, options)
         cached_options.validate(self._cache_owner, question, options)
+        if abstain_threshold is not None:
+            if (
+                calibrated_options is None
+                or calibrated_question is None
+                or calibrated_max_length is None
+            ):
+                raise ValueError("complete calibration metadata is required with an abstain threshold")
+            if set(calibrated_options) != set(options):
+                raise ValueError("runtime options do not match the calibrated option catalog")
+            if calibrated_question != question:
+                raise ValueError("runtime question does not match the calibrated question")
+            if calibrated_max_length != self.max_length:
+                raise ValueError("runtime max_length does not match the calibrated max_length")
         logits = self.score_states([state], cached_options)
         return ChoiceAnswer.from_logits(
             options,
@@ -175,6 +192,7 @@ class BiEncoderDecisionModel:
             temperature=temperature,
             abstain_option=abstain_option,
             abstain_threshold=abstain_threshold,
+            abstain_temperature=abstain_temperature,
         )
 
     def save(self, output_dir: str | Path) -> None:

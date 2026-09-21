@@ -132,13 +132,15 @@ kev-eval-bi `
 ```
 
 The OOD-aware model adds `none_of_above` automatically at inference. It calibrates rejection from
-the temperature-scaled margin between that option and the best real option, so the score is stable
-when callers provide different numbers of choices. Applications should call `encode_options` once
-and reuse the returned identity-checked cache. The CLI demonstrates the same closed output contract:
+the logit margin between that option and the best real option. A rejection threshold is valid only
+for the complete option catalog used during calibration; the CLI rejects a different catalog rather
+than silently applying the wrong threshold. Applications should call `encode_options` once and reuse
+the returned identity-checked cache. The CLI demonstrates the closed output contract for an
+uncalibrated subset; pass `--rejection-threshold` only with its complete calibrated catalog:
 
 ```powershell
 kev-predict-bi `
-  --model artifacts/kev-bi-minilm-ood-5k `
+  --model artifacts/kev-bi-minilm-5k `
   --state "I am still waiting for my card" `
   --question "What is the customer's banking intent?" `
   --option card_arrival `

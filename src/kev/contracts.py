@@ -30,6 +30,7 @@ class ChoiceAnswer:
         temperature: float = 1.0,
         abstain_option: str | None = None,
         abstain_threshold: float | None = None,
+        abstain_temperature: float | None = None,
     ) -> "ChoiceAnswer":
         if not options:
             raise ValueError("options must not be empty")
@@ -43,8 +44,12 @@ class ChoiceAnswer:
             raise ValueError("abstain_option and abstain_threshold must be supplied together")
         if abstain_option is not None and abstain_option not in options:
             raise ValueError("abstain_option must be one of the options")
+        if abstain_option is not None and len(options) < 2:
+            raise ValueError("abstention requires at least one real option")
         if abstain_threshold is not None and not 0 <= abstain_threshold <= 1:
             raise ValueError("abstain_threshold must be between zero and one")
+        if abstain_temperature is not None and abstain_temperature <= 0:
+            raise ValueError("abstain_temperature must be positive")
 
         scaled = [float(value) / temperature for value in logits]
         maximum = max(scaled)
@@ -55,10 +60,11 @@ class ChoiceAnswer:
         rejection_score = None
         if abstain_option is not None:
             abstain_index = options.index(abstain_option)
-            best_known_logit = max(
-                value for index, value in enumerate(scaled) if index != abstain_index
+            margin_temperature = abstain_temperature or 1.0
+            raw_margin = float(logits[abstain_index]) - max(
+                float(value) for index, value in enumerate(logits) if index != abstain_index
             )
-            margin = scaled[abstain_index] - best_known_logit
+            margin = raw_margin / margin_temperature
             if margin >= 0:
                 rejection_score = 1.0 / (1.0 + math.exp(-margin))
             else:

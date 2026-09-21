@@ -109,15 +109,13 @@ def main() -> None:
         ood_calibration_examples,
         cached_options=cached_options,
     )
-    combined_calibration_logits = torch.cat([calibration_logits, ood_calibration_logits])
-    combined_calibration_targets = torch.cat([calibration_targets, ood_calibration_targets])
-    temperature = fit_temperature(combined_calibration_logits, combined_calibration_targets)
+    temperature = fit_temperature(calibration_logits, calibration_targets)
     none_index = cached_options.options.index(NONE_OF_ABOVE)
     known_calibration_none_scores = rejection_scores(
-        calibration_logits, none_index=none_index, temperature=temperature
+        calibration_logits, none_index=none_index, temperature=1.0
     )
     ood_calibration_none_scores = rejection_scores(
-        ood_calibration_logits, none_index=none_index, temperature=temperature
+        ood_calibration_logits, none_index=none_index, temperature=1.0
     )
     rejection_threshold = fit_rejection_threshold(
         known_calibration_none_scores,
@@ -136,10 +134,10 @@ def main() -> None:
 
     test_probabilities = torch.softmax(test_logits / temperature, dim=-1)
     known_none_scores = rejection_scores(
-        test_logits, none_index=none_index, temperature=temperature
+        test_logits, none_index=none_index, temperature=1.0
     )
     ood_none_scores = rejection_scores(
-        ood_test_logits, none_index=none_index, temperature=temperature
+        ood_test_logits, none_index=none_index, temperature=1.0
     )
     rejection = rejection_metrics(
         known_none_scores,
@@ -212,6 +210,9 @@ def main() -> None:
                 "temperature": temperature,
                 "rejection_threshold": rejection_threshold,
                 "abstain_option": NONE_OF_ABOVE,
+                "rejection_options": open_set_labels,
+                "question": DEFAULT_QUESTION,
+                "max_length": args.max_length,
             },
             indent=2,
         ),

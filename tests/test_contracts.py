@@ -55,3 +55,13 @@ def test_rejection_score_is_invariant_to_irrelevant_extra_options():
     )
 
     assert compact.rejection_score == pytest.approx(expanded.rejection_score)
+
+
+def test_abstention_requires_at_least_one_real_option():
+    with pytest.raises(ValueError, match="real option"):
+        ChoiceAnswer.from_logits(
+            ["none_of_above"],
+            [1.0],
+            abstain_option="none_of_above",
+            abstain_threshold=0.5,
+        )

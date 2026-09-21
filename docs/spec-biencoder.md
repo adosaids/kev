@@ -13,8 +13,10 @@ state once, and retain useful choice accuracy while materially reducing online l
 4. `kev-eval-bi` evaluates all 77 choices, validation-only temperature scaling, probability
    metrics, option-order consistency, option precomputation cost and online decision latency.
 5. OOD-aware training adds a reserved `none_of_above` option. The rejection score is the sigmoid
-   of its calibrated logit margin over the best real option; a validation-only threshold maps that
+   of its logit margin over the best real option; a validation-only threshold maps that
    score to accept or reject.
+   The threshold is bound to the complete calibrated option catalog, question template and maximum
+   token length, and must not be reused with different inputs.
 
 ## Constraints
 
