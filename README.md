@@ -161,3 +161,5 @@ its limitations are recorded in [the cross-encoder report](docs/experiment-2026-
 [cached-option comparison](docs/biencoder-experiment-2026-09-21.md) records the faster architecture.
 The [OOD rejection experiment](docs/ood-experiment-2026-09-21.md) records abstention performance
 and its limits.
+The proposed next architecture is specified in
+[the dynamic-option LLM design](docs/dynamic-option-llm.md).
