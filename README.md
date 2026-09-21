@@ -28,6 +28,7 @@ Python 3.10+ and a CUDA-enabled PyTorch installation are recommended.
 ```powershell
 uv sync --extra dev
 uv run kev-download --output data/banking77
+uv run kev-download-oos --output data/clinc150
 ```
 
 If PyTorch is already installed for your CUDA version, install without replacing it:
@@ -36,6 +37,7 @@ If PyTorch is already installed for your CUDA version, install without replacing
 python -m pip wheel . --no-deps --wheel-dir dist
 python -m pip install --force-reinstall --no-deps (Get-ChildItem dist/kev_decision-*.whl).FullName
 kev-download --output data/banking77
+kev-download-oos --output data/clinc150
 ```
 
 On Windows, editable installs from a path containing non-ASCII characters can produce a broken
@@ -110,25 +112,33 @@ once. Train and evaluate it with:
 ```powershell
 kev-train-bi `
   --data-dir data/banking77 `
-  --output-dir artifacts/kev-bi-minilm-5k `
+  --ood-data-dir data/clinc150 `
+  --base-model artifacts/kev-bi-minilm-5k `
+  --output-dir artifacts/kev-bi-minilm-ood-5k `
   --max-train-samples 5000 `
+  --ood-repeats 4 `
   --epochs 1 `
   --batch-size 8 `
   --negatives 7
 
 kev-eval-bi `
-  --model artifacts/kev-bi-minilm-5k `
+  --model artifacts/kev-bi-minilm-ood-5k `
   --data-dir data/banking77 `
+  --ood-data-dir data/clinc150 `
   --calibration-samples 200 `
-  --test-samples 500
+  --ood-calibration-samples 100 `
+  --test-samples 500 `
+  --ood-test-samples 500
 ```
 
-Applications should call `encode_options` once and reuse the returned identity-checked cache. The CLI demonstrates
-the same closed output contract:
+The OOD-aware model adds `none_of_above` automatically at inference. It calibrates rejection from
+the temperature-scaled margin between that option and the best real option, so the score is stable
+when callers provide different numbers of choices. Applications should call `encode_options` once
+and reuse the returned identity-checked cache. The CLI demonstrates the same closed output contract:
 
 ```powershell
 kev-predict-bi `
-  --model artifacts/kev-bi-minilm-5k `
+  --model artifacts/kev-bi-minilm-ood-5k `
   --state "I am still waiting for my card" `
   --question "What is the customer's banking intent?" `
   --option card_arrival `
@@ -147,3 +157,5 @@ See [the experiment specification](docs/spec.md) and
 [the architecture notes](docs/architecture.md) for scope and next steps. A real RTX 4060 run and
 its limitations are recorded in [the cross-encoder report](docs/experiment-2026-09-21.md). The
 [cached-option comparison](docs/biencoder-experiment-2026-09-21.md) records the faster architecture.
+The [OOD rejection experiment](docs/ood-experiment-2026-09-21.md) records abstention performance
+and its limits.

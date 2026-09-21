@@ -162,6 +162,8 @@ class BiEncoderDecisionModel:
         *,
         cached_options: CachedOptions | None = None,
         temperature: float = 1.0,
+        abstain_option: str | None = None,
+        abstain_threshold: float | None = None,
     ) -> ChoiceAnswer:
         if cached_options is None:
             cached_options = self.encode_options(question, options)
@@ -171,6 +173,8 @@ class BiEncoderDecisionModel:
             options,
             logits[0].detach().cpu().tolist(),
             temperature=temperature,
+            abstain_option=abstain_option,
+            abstain_threshold=abstain_threshold,
         )
 
     def save(self, output_dir: str | Path) -> None:

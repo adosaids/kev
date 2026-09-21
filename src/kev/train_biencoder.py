@@ -10,9 +10,43 @@ import torch.nn.functional as functional
 from torch.utils.data import DataLoader
 
 from kev.biencoder import BiEncoderDecisionModel
-from kev.data import load_categories, load_split, train_validation_split
+from kev.data import (
+    NONE_OF_ABOVE,
+    ChoiceExample,
+    abstaining_grouped_candidates,
+    load_categories,
+    load_clinc_oos,
+    load_split,
+    train_validation_split,
+)
 from kev.model import DEFAULT_BASE_MODEL, DEFAULT_QUESTION, candidate_text
-from kev.train import TrainingDataset, seed_everything
+from kev.train import seed_everything
+
+
+class AbstentionTrainingDataset(torch.utils.data.Dataset):
+    def __init__(
+        self,
+        examples: list[ChoiceExample],
+        labels: list[str],
+        *,
+        negatives: int,
+        seed: int,
+    ):
+        self.examples = examples
+        self.labels = labels
+        self.negatives = negatives
+        self.seed = seed
+
+    def __len__(self) -> int:
+        return len(self.examples)
+
+    def __getitem__(self, index: int):
+        return abstaining_grouped_candidates(
+            self.examples[index],
+            self.labels,
+            negatives=self.negatives,
+            seed=self.seed + index,
+        )
 
 
 def make_collator(decision_model: BiEncoderDecisionModel):
@@ -40,6 +74,8 @@ def make_collator(decision_model: BiEncoderDecisionModel):
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train the cached-option bi-encoder")
     parser.add_argument("--data-dir", default="data/banking77")
+    parser.add_argument("--ood-data-dir", default="data/clinc150")
+    parser.add_argument("--ood-repeats", type=int, default=4)
     parser.add_argument("--base-model", default=DEFAULT_BASE_MODEL)
     parser.add_argument("--output-dir", default="artifacts/kev-bi-minilm")
     parser.add_argument("--epochs", type=int, default=1)
@@ -64,6 +100,10 @@ def main() -> None:
     )
     if args.max_train_samples:
         training_examples = training_examples[: args.max_train_samples]
+    if args.ood_repeats < 1:
+        raise ValueError("ood_repeats must be positive")
+    ood_examples = load_clinc_oos(args.ood_data_dir, "train") * args.ood_repeats
+    training_examples = [*training_examples, *ood_examples]
 
     decision_model = BiEncoderDecisionModel.from_pretrained(
         args.base_model,
@@ -71,7 +111,7 @@ def main() -> None:
         max_length=args.max_length,
     )
     decision_model.model.to(args.device)
-    dataset = TrainingDataset(
+    dataset = AbstentionTrainingDataset(
         training_examples,
         labels,
         negatives=args.negatives,
@@ -140,6 +180,8 @@ def main() -> None:
                 **vars(args),
                 "question": DEFAULT_QUESTION,
                 "labels": labels,
+                "abstain_option": NONE_OF_ABOVE,
+                "ood_training_samples": len(ood_examples),
                 "reserved_validation_samples": len(validation_examples),
                 "training_seconds": time.perf_counter() - started,
             },

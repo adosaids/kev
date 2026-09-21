@@ -16,6 +16,12 @@ BANKING77_BASE_URL = (
     "https://raw.githubusercontent.com/PolyAI-LDN/task-specific-datasets/"
     f"{BANKING77_COMMIT}/banking_data"
 )
+CLINC_OOS_COMMIT = "828f8093932c8fe6ca7936c3d2e52903b1c523de"
+CLINC_OOS_URL = (
+    "https://raw.githubusercontent.com/clinc/oos-eval/"
+    f"{CLINC_OOS_COMMIT}/data/data_oos_plus.json"
+)
+NONE_OF_ABOVE = "none_of_above"
 
 
 @dataclass(frozen=True)
@@ -52,6 +58,40 @@ def grouped_candidates(
 
     rng = random.Random(seed)
     options = [example.label, *rng.sample(available, negatives)]
+    rng.shuffle(options)
+    return CandidateGroup(
+        state=example.text,
+        question=question,
+        options=tuple(options),
+        target=options.index(example.label),
+    )
+
+
+def abstaining_grouped_candidates(
+    example: ChoiceExample,
+    labels: Sequence[str],
+    *,
+    negatives: int,
+    seed: int,
+    question: str = "What is the customer's banking intent?",
+) -> CandidateGroup:
+    if NONE_OF_ABOVE in labels:
+        raise ValueError("labels must not contain the reserved none_of_above option")
+    if negatives < 1:
+        raise ValueError("abstention training requires at least one negative")
+
+    rng = random.Random(seed)
+    if example.label == NONE_OF_ABOVE:
+        if negatives > len(labels):
+            raise ValueError("negatives is outside the available candidate range")
+        options = [NONE_OF_ABOVE, *rng.sample(list(labels), negatives)]
+    else:
+        if example.label not in labels:
+            raise ValueError(f"unknown label: {example.label}")
+        available = [label for label in labels if label != example.label]
+        if negatives - 1 > len(available):
+            raise ValueError("negatives is outside the available candidate range")
+        options = [example.label, NONE_OF_ABOVE, *rng.sample(available, negatives - 1)]
     rng.shuffle(options)
     return CandidateGroup(
         state=example.text,
@@ -111,11 +151,39 @@ def download_banking77(output_dir: str | Path) -> Path:
     return destination
 
 
+def download_clinc_oos(output_dir: str | Path) -> Path:
+    destination = Path(output_dir)
+    destination.mkdir(parents=True, exist_ok=True)
+    urllib.request.urlretrieve(CLINC_OOS_URL, destination / "data_oos_plus.json")
+    (destination / "SOURCE.txt").write_text(
+        "CLINC150 OOS data from clinc/oos-eval\n"
+        f"Commit: {CLINC_OOS_COMMIT}\n"
+        "License: CC BY 4.0\n",
+        encoding="utf-8",
+    )
+    return destination
+
+
+def load_clinc_oos(data_dir: str | Path, split: str) -> list[ChoiceExample]:
+    if split not in {"train", "val", "test"}:
+        raise ValueError("CLINC OOS split must be train, val or test")
+    path = Path(data_dir) / "data_oos_plus.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return [ChoiceExample(text, NONE_OF_ABOVE) for text, _ in payload[f"oos_{split}"]]
+
+
 def download_cli() -> None:
     parser = argparse.ArgumentParser(description="Download the pinned Banking77 dataset")
     parser.add_argument("--output", default="data/banking77")
     args = parser.parse_args()
     print(download_banking77(args.output))
+
+
+def download_oos_cli() -> None:
+    parser = argparse.ArgumentParser(description="Download the pinned CLINC150 OOS dataset")
+    parser.add_argument("--output", default="data/clinc150")
+    args = parser.parse_args()
+    print(download_clinc_oos(args.output))
 
 
 if __name__ == "__main__":

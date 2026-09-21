@@ -1,4 +1,10 @@
-from kev.data import ChoiceExample, grouped_candidates, train_validation_split
+from kev.data import (
+    NONE_OF_ABOVE,
+    ChoiceExample,
+    abstaining_grouped_candidates,
+    grouped_candidates,
+    train_validation_split,
+)
 
 
 def test_grouped_candidates_have_one_positive_and_unique_negatives():
@@ -25,3 +31,24 @@ def test_train_validation_split_is_disjoint_and_stratified():
     assert {example.text for example in train}.isdisjoint(
         {example.text for example in validation}
     )
+
+
+def test_abstaining_groups_train_none_as_negative_for_known_examples():
+    example = ChoiceExample("Where is my card?", "card_arrival")
+    group = abstaining_grouped_candidates(
+        example, ["card_arrival", "cash_withdrawal", "exchange_rate"], negatives=2, seed=7
+    )
+
+    assert len(group.options) == 3
+    assert NONE_OF_ABOVE in group.options
+    assert group.options[group.target] == "card_arrival"
+
+
+def test_abstaining_groups_train_none_as_positive_for_ood_examples():
+    example = ChoiceExample("Who won the football game?", NONE_OF_ABOVE)
+    group = abstaining_grouped_candidates(
+        example, ["card_arrival", "cash_withdrawal", "exchange_rate"], negatives=2, seed=7
+    )
+
+    assert len(group.options) == 3
+    assert group.options[group.target] == NONE_OF_ABOVE

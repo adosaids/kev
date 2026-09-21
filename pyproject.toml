@@ -20,6 +20,7 @@ dev = ["pytest>=8", "ruff>=0.8"]
 
 [project.scripts]
 kev-download = "kev.data:download_cli"
+kev-download-oos = "kev.data:download_oos_cli"
 kev-train = "kev.train:main"
 kev-eval = "kev.evaluate:main"
 kev-predict = "kev.predict:main"
